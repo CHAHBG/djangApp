@@ -1,0 +1,59 @@
+{
+  "name": "infoapp",
+  "version": "1.0.0",
+  "description": "Application d'apprentissage de l'informatique pour débutants",
+  "main": "src/main.js",
+  "scripts": {
+    "start": "electron .",
+    "dev": "concurrently \"npm run react-dev\" \"npm run electron-dev\"",
+    "react-dev": "react-scripts start",
+    "electron-dev": "wait-on http://localhost:3000 && electron .",
+    "build": "react-scripts build",
+    "package-win": "electron-builder --win --x64",
+    "eject": "react-scripts eject",
+    "rebuild": "electron-rebuild"
+  },
+  "build": {
+    "appId": "com.infoapp.app",
+    "productName": "InfoApp",
+    "files": [
+      "build/**/*",
+      "src/main.js",
+      "src/preload.js",
+      "src/scraper.py",
+      "database/**/*",
+      "assets/**/*"
+    ],
+    "win": {
+      "target": "nsis",
+      "icon": "assets/icon.png"
+    }
+  },
+  "dependencies": {
+    "better-sqlite3": "^8.6.0",
+    "chart.js": "^4.4.0",
+    "electron-store": "^8.1.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "react-scripts": "5.0.1"
+  },
+  "devDependencies": {
+    "concurrently": "^7.6.0",
+    "electron": "^22.0.0",
+    "electron-builder": "^23.6.0",
+    "electron-rebuild": "^3.2.9",
+    "wait-on": "^6.0.1"
+  },
+  "browserslist": {
+    "production": [
+      ">0.2%",
+      "not dead",
+      "not op_mini all"
+    ],
+    "development": [
+      "last 1 chrome version",
+      "last 1 firefox version",
+      "last 1 safari version"
+    ]
+  }
+}

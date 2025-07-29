@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>InfoApp</title>
+  <link rel="stylesheet" href="../../assets/css/style.css">
+</head>
+<body>
+  <div id="setup-screen" class="setup-screen">
+    <div class="setup-container">
+      <div class="setup-header">
+        <h1>Bienvenue dans InfoApp</h1>
+        <p>Commencez votre parcours d'apprentissage de l'informatique</p>
+      </div>
+      <form id="setup-form" class="setup-form">
+        <div class="form-group">
+          <label for="user-name" class="form-label">Votre prénom</label>
+          <input type="text" id="user-name" class="form-control" placeholder="Entrez votre prénom" required>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Choisissez votre avatar</label>
+          <div class="avatar-selection">
+            <div class="avatar-option" data-avatar="etudiant">
+              <div class="avatar-circle">👨‍🎓</div>
+              <span>Étudiant</span>
+            </div>
+            <div class="avatar-option" data-avatar="developpeur">
+              <div class="avatar-circle">👨‍💻</div>
+              <span>Développeur</span>
+            </div>
+            <div class="avatar-option" data-avatar="professeur">
+              <div class="avatar-circle">👨‍🏫</div>
+              <span>Professeur</span>
+            </div>
+          </div>
+        </div>
+        <button type="submit" class="btn btn--primary btn--full-width">Démarrer mon apprentissage</button>
+      </form>
+    </div>
+  </div>
+
+  <div id="main-app" class="main-app hidden">
+    <aside class="sidebar">
+      <div class="sidebar-header">
+        <h2>InfoApp</h2>
+        <div class="user-info">
+          <div class="user-avatar">👨‍🎓</div>
+          <div class="user-details">
+            <span class="user-name">Utilisateur</span>
+            <span class="user-level">Niveau 1</span>
+          </div>
+        </div>
+      </div>
+      <nav class="sidebar-nav">
+        <a href="#" class="nav-item active" data-section="dashboard">📊 Tableau de bord</a>
+        <a href="#" class="nav-item" data-section="modules">📚 Modules</a>
+        <a href="#" class="nav-item" data-section="profile">👤 Mon profil</a>
+        <a href="#" class="nav-item" data-section="level">🏆 Mon niveau</a>
+        <a href="#" class="nav-item" data-section="settings">⚙️ Paramètres</a>
+      </nav>
+    </aside>
+
+    <main class="main-content">
+      <section id="dashboard-section" class="content-section active">
+        <div class="section-header">
+          <h1>Tableau de bord</h1>
+          <p>Suivez votre progression et découvrez vos accomplissements</p>
+        </div>
+        <div class="dashboard-grid">
+          <div class="stats-card">
+            <h3>Progression globale</h3>
+            <div class="progress-circle" id="globalProgress">0%</div>
+          </div>
+          <div class="stats-card">
+            <h3>Expérience</h3>
+            <div class="xp-info">
+              <div class="xp-bar"><div class="xp-fill" id="xpFill"></div></div>
+              <span id="xpDisplay">0 XP</span>
+            </div>
+          </div>
+          <div class="stats-card">
+            <h3>Statistiques de progression</h3>
+            <canvas id="progressChart"></canvas>
+          </div>
+          <div class="stats-card">
+            <h3>Derniers badges</h3>
+            <div class="recent-badges" id="recentBadges">
+              <p class="no-badges">Aucun badge obtenu</p>
+            </div>
+          </div>
+          <div class="stats-card">
+            <h3>Statistiques</h3>
+            <div class="stats-list">
+              <div class="stat-item"><span>Leçons terminées</span><span id="completedLessons">0</span></div>
+              <div class="stat-item"><span>Quiz réussis</span><span id="completedQuizzes">0</span></div>
+              <div class="stat-item"><span>Badges obtenus</span><span id="totalBadges">0</span></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="modules-section" class="content-section">
+        <div class="section-header">
+          <h1>Modules d'apprentissage</h1>
+          <p>Explorez nos différents domaines d'apprentissage</p>
+        </div>
+        <div class="modules-grid" id="modulesGrid"></div>
+      </section>
+
+      <section id="profile-section" class="content-section">
+        <div class="section-header">
+          <h1>Mon profil</h1>
+          <p>Gérez vos informations personnelles et vos accomplissements</p>
+        </div>
+        <div class="profile-content">
+          <div class="profile-info">
+            <div class="profile-avatar-section">
+              <div class="profile-avatar">👨‍🎓</div>
+              <button class="btn btn--outline btn--sm" onclick="app.openAvatarModal()">Changer d'avatar</button>
+              <div class="profile-details">
+                <h3>Utilisateur</h3>
+                <p>Niveau 1 • 0 XP</p>
+              </div>
+            </div>
+          </div>
+          <div class="badges-grid" id="badgesGrid">
+            <p>Aucun badge obtenu pour le moment</p>
+          </div>
+        </div>
+      </section>
+
+      <section id="level-section" class="content-section">
+        <div class="section-header">
+          <h1>Mon niveau</h1>
+          <p>Découvrez votre progression et les récompenses à venir</p>
+        </div>
+        <div class="level-content">
+          <div class="current-level">
+            <div class="level-display">
+              <div class="level-number">1</div>
+              <div class="level-info">
+                <h4>Débutant</h4>
+                <div class="level-progress">
+                  <div class="level-bar"><div class="level-fill"></div></div>
+                  <span>0 / 100 XP</span>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="levels-timeline" id="levelsTimeline"></div>
+        </div>
+      </section>
+
+      <section id="settings-section" class="content-section">
+        <div class="section-header">
+          <h1>Paramètres</h1>
+          <p>Personnalisez votre expérience d'apprentissage</p>
+        </div>
+        <div class="settings-content">
+          <div class="settings-group">
+            <h3>Apparence</h3>
+            <div class="setting-item">
+              <label for="theme-select" class="form-label">Thème</label>
+              <select id="theme-select" class="form-control">
+                <option value="auto">Automatique</option>
+                <option value="light">Clair</option>
+                <option value="dark">Sombre</option>
+              </select>
+            </div>
+          </div>
+          <div class="settings-group">
+            <h3>Données</h3>
+            <div class="settings-actions">
+              <button class="btn btn--outline" onclick="app.exportData()">Exporter mes données</button>
+              <button class="btn btn--outline" onclick="app.resetProgress()">Réinitialiser la progression</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <div id="videoModal" class="modal hidden">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h3>Titre de la leçon</h3>
+            <button class="modal-close" onclick="app.closeModal('videoModal')">×</button>
+          </div>
+          <div class="modal-body">
+            <div class="video-container">
+              <video id="lessonVideo" controls>
+                <source id="videoSource" src="" type="video/mp4">
+                Votre navigateur ne supporte pas les vidéos HTML5.
+              </video>
+            </div>
+            <div class="lesson-actions">
+              <button id="markCompleteBtn" class="btn btn--primary" onclick="app.markLessonComplete()">Marquer comme terminé</button>
+              <a id="pdfLink" class="btn btn--outline" href="#" target="_blank">Télécharger le PDF</a>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div id="quizModal" class="modal hidden">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h3>Quiz</h3>
+            <button class="modal-close" onclick="app.closeModal('quizModal')">×</button>
+          </div>
+          <div class="modal-body" id="quizContent"></div>
+        </div>
+      </div>
+
+      <div id="avatarModal" class="modal hidden">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h3>Changer d'avatar</h3>
+            <button class="modal-close" onclick="app.closeModal('avatarModal')">×</button>
+          </div>
+          <div class="modal-body">
+            <div class="avatar-selection">
+              <div class="avatar-option" data-avatar="etudiant">
+                <div class="avatar-circle">👨‍🎓</div>
+                <span>Étudiant</span>
+              </div>
+              <div class="avatar-option" data-avatar="developpeur">
+                <div class="avatar-circle">👨‍💻</div>
+                <span>Développeur</span>
+              </div>
+              <div class="avatar-option" data-avatar="professeur">
+                <div class="avatar-circle">👨‍🏫</div>
+                <span>Professeur</span>
+              </div>
+            </div>
+            <div class="lesson-actions">
+              <button class="btn btn--primary" onclick="app.saveAvatar()">Sauvegarder</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+  <script src="app.js"></script>
+</body>
+</html>
