@@ -20,7 +20,8 @@
       "build/**/*",
       "src/main.js",
       "src/preload.js",
-      "src/scraper.py",
+      "src/enhanced_scraper.py",
+      "src/topic_config.py",
       "database/**/*",
       "assets/**/*"
     ],
@@ -30,19 +31,26 @@
     }
   },
   "dependencies": {
-    "better-sqlite3": "^8.6.0",
-    "chart.js": "^4.4.0",
-    "electron-store": "^8.1.0",
-    "react": "^18.2.0",
-    "react-dom": "^18.2.0",
-    "react-scripts": "5.0.1"
+    "antd": "^5.20.6",
+    "better-sqlite3": "^11.3.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-scripts": "^5.0.1"
   },
   "devDependencies": {
-    "concurrently": "^7.6.0",
-    "electron": "^22.0.0",
-    "electron-builder": "^23.6.0",
+    "concurrently": "^9.0.1",
+    "electron": "^31.6.0",
+    "electron-builder": "^25.0.5",
     "electron-rebuild": "^3.2.9",
-    "wait-on": "^6.0.1"
+    "wait-on": "^8.0.1",
+    "@babel/plugin-transform-private-methods": "^7.25.7",
+    "@babel/plugin-transform-numeric-separator": "^7.25.7",
+    "@babel/plugin-transform-nullish-coalescing-operator": "^7.25.7",
+    "@babel/plugin-transform-class-properties": "^7.25.7",
+    "@babel/plugin-transform-private-property-in-object": "^7.25.7",
+    "@babel/plugin-transform-optional-chaining": "^7.25.7",
+    "@eslint/config-array": "^0.18.0",
+    "@jridgewell/sourcemap-codec": "^1.5.0"
   },
   "browserslist": {
     "production": [
