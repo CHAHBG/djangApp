@@ -1,56 +1,49 @@
 import React from 'react';
+import { Menu } from 'antd';
+import { DashboardOutlined, FileOutlined, DesktopOutlined, UserOutlined, SettingOutlined, SyncOutlined } from '@ant-design/icons';
 
 const Sidebar = ({ currentView, onViewChange, user }) => {
   const navItems = [
-    { id: 'dashboard', label: 'Tableau de bord', icon: '📊' },
-    { id: 'bureautique', label: 'Bureautique', icon: '📚' },
-    { id: 'informatique', label: 'Informatique', icon: '💻' },
-    { id: 'programmation', label: 'Programmation', icon: '👨‍💻' },
-    { id: 'cybersecurite', label: 'Cybersécurité', icon: '🔒' },
-    { id: 'profile', label: 'Mon profil', icon: '👤' },
-    { id: 'level', label: 'Mon niveau', icon: '🏆' },
-    { id: 'settings', label: 'Paramètres', icon: '⚙️' }
+    { id: 'dashboard', label: 'Tableau de bord', icon: <DashboardOutlined /> },
+    { id: 'bureautique', label: 'Bureautique', icon: <FileOutlined /> },
+    { id: 'informatique', label: 'Informatique', icon: <DesktopOutlined /> },
+    { id: 'programmation', label: 'Programmation', icon: <DesktopOutlined /> },
+    { id: 'content-manager', label: 'Contenu Auto', icon: <SyncOutlined /> },
+    { id: 'profile', label: 'Mon Profil', icon: <UserOutlined /> },
+    { id: 'level', label: 'Mon Niveau', icon: <UserOutlined /> },
+    { id: 'settings', label: 'Paramètres', icon: <SettingOutlined /> },
   ];
 
   const avatarEmojis = {
-    'etudiant': '👨‍🎓',
-    'developpeur': '👨‍💻',
-    'professeur': '👨‍🏫'
+    etudiant: '👨‍🎓',
+    developpeur: '👨‍💻',
+    professeur: '👨‍🏫',
   };
 
   return (
-    <aside className="sidebar" role="complementary">
-      <div className="sidebar-header">
-        <h2>InfoApp</h2>
+    <div style={{ width: 200, background: '#001529', height: '100vh' }}>
+      <div style={{ padding: '16px', color: 'white', textAlign: 'center' }}>
+        <h2>DjangApp</h2>
         {user && (
-          <div className="user-info">
-            <div className="user-avatar" aria-hidden="true">{avatarEmojis[user.avatar] || '👨‍🎓'}</div>
-            <div className="user-details">
-              <span className="user-name">{user.name}</span>
-              <span className="user-level">Niveau {user.level}</span>
-            </div>
+          <div style={{ marginTop: '16px' }}>
+            <div style={{ fontSize: '2rem' }}>{avatarEmojis[user.avatar] || '👨‍🎓'}</div>
+            <div style={{ color: 'white' }}>{user.name}</div>
+            <div style={{ color: 'rgba(255,255,255,0.65)' }}>Niveau {user.level}</div>
           </div>
         )}
       </div>
-      <nav className="sidebar-nav" role="navigation">
-        {navItems.map(item => (
-          <a
-            key={item.id}
-            href="#"
-            className={`nav-item ${currentView === item.id ? 'active' : ''}`}
-            onClick={(e) => {
-              e.preventDefault();
-              onViewChange(item.id);
-            }}
-            role="button"
-            aria-label={item.label}
-          >
-            <span className="nav-icon">{item.icon}</span>
-            {item.label}
-          </a>
-        ))}
-      </nav>
-    </aside>
+      <Menu
+        theme="dark"
+        mode="inline"
+        selectedKeys={[currentView]}
+        onClick={({ key }) => onViewChange(key)}
+        items={navItems.map((item) => ({
+          key: item.id,
+          icon: item.icon,
+          label: item.label,
+        }))}
+      />
+    </div>
   );
 };
 

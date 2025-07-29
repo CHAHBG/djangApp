@@ -16,5 +16,30 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getContent: () => ipcRenderer.invoke('getContent'),
   getResources: (lessonId) => ipcRenderer.invoke('getResources', lessonId),
   getAssetPath: (path) => ipcRenderer.invoke('getAssetPath', path),
-  runScraper: () => ipcRenderer.invoke('runScraper'),
+  runContentScraper: () => ipcRenderer.invoke('runContentScraper'),
+  getScrapingStats: () => ipcRenderer.invoke('getScrapingStats'),
+  manualContentRefresh: () => ipcRenderer.invoke('manualContentRefresh'),
+  startQuiz: (quizData) => ipcRenderer.invoke('startQuiz', quizData),
+  onContentUpdated: (callback) => {
+    ipcRenderer.on('content-updated', (event, content) => callback(content));
+  },
+  removeContentUpdatedListener: () => {
+    ipcRenderer.removeAllListeners('content-updated');
+  },
+  onScrapingStarted: (callback) => {
+    ipcRenderer.on('scraping-started', (event, data) => callback(data));
+  },
+  onScrapingCompleted: (callback) => {
+    ipcRenderer.on('scraping-completed', (event, results) => callback(results));
+  },
+  onQuizStarted: (callback) => {
+    ipcRenderer.on('quiz-started', (event, quizData) => callback(quizData));
+  },
+  removeScrapingListeners: () => {
+    ipcRenderer.removeAllListeners('scraping-started');
+    ipcRenderer.removeAllListeners('scraping-completed');
+  },
+  removeQuizListeners: () => {
+    ipcRenderer.removeAllListeners('quiz-started');
+  },
 });

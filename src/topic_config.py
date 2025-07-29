@@ -1,467 +1,624 @@
-# topic_config.py - Specific configuration for your topics
-
-TOPIC_CONFIGURATIONS = {
-    "computer_basics": {
-        "french_keywords": [
-            # Basic computer terms
-            "informatique", "ordinateur", "pc", "windows", "bureautique",
-            "débutant", "initiation", "base", "fondamentaux", "découverte",
-            "utilisation", "manipulation", "navigation", "internet", "email",
-            "traitement de texte", "tableur", "présentation", "office",
-            "word", "excel", "powerpoint", "libre office", "open office",
-            "fichier", "dossier", "système", "installation", "configuration"
-        ],
-        "english_keywords": [
-            "computer", "pc", "basic", "beginner", "introduction", 
-            "fundamentals", "office", "windows", "internet", "email",
-            "word processing", "spreadsheet", "presentation", "file",
-            "folder", "system", "installation", "configuration"
-        ],
-        "priority": 1
-    },
-    
-    "programming": {
-        "french_keywords": [
-            # Programming terms
-            "programmation", "développement", "code", "coder", "développer",
-            "python", "javascript", "html", "css", "java", "c++",
-            "algorithmique", "logique", "scratch", "débutant", "initiation",
-            "premiers pas", "apprendre", "tutorial", "cours", "formation",
-            "variables", "fonctions", "boucles", "conditions", "objets",
-            "web", "site web", "application", "logiciel", "script"
-        ],
-        "english_keywords": [
-            "programming", "coding", "development", "python", "javascript",
-            "html", "css", "java", "algorithm", "beginner", "introduction",
-            "learn", "tutorial", "course", "variables", "functions",
-            "loops", "conditions", "objects", "web", "website", "application"
-        ],
-        "priority": 1
-    },
-    
-    "english_learning": {
-        "french_keywords": [
-            # English learning terms
-            "anglais", "english", "langue anglaise", "apprendre anglais",
-            "cours anglais", "débutant", "apprentissage", "formation",
-            "conversation", "grammaire", "vocabulaire", "prononciation",
-            "initiation", "niveau", "faux-débutant", "intermédiaire",
-            "business english", "anglais professionnel", "toeic", "toefl",
-            "speaking", "listening", "reading", "writing", "communication"
-        ],
-        "english_keywords": [
-            "english", "esl", "language", "beginner", "learning", "course",
-            "conversation", "grammar", "vocabulary", "pronunciation",
-            "basic", "elementary", "intermediate", "business english",
-            "toeic", "toefl", "speaking", "listening", "reading", "writing"
-        ],
-        "priority": 1
-    }
-}
-
-# Specific sources for each topic
-TOPIC_SPECIFIC_SOURCES = {
-    "computer_basics": {
-        "fun_mooc_searches": [
-            "informatique+débutant",
-            "bureautique",
-            "ordinateur+initiation",
-            "numérique+formation",
-            "windows+débutant"
-        ],
-        "wikiversity_categories": [
-            "/wiki/Catégorie:Bureautique",
-            "/wiki/Catégorie:Informatique",
-            "/wiki/Département:Informatique"
-        ]
-    },
-    
-    "programming": {
-        "fun_mooc_searches": [
-            "programmation+débutant",
-            "python+initiation", 
-            "développement+web",
-            "javascript+cours",
-            "html+css"
-        ],
-        "mit_ocw_courses": [
-            "/courses/6-0001-introduction-to-computer-science-and-programming-in-python-fall-2016/",
-            "/courses/6-00-introduction-to-computer-science-and-programming-fall-2008/",
-            "/courses/6-034-artificial-intelligence-fall-2010/"
-        ],
-        "openclassrooms_terms": [
-            "python-debutant",
-            "javascript-debutant",
-            "html-css-debutant",
-            "programmation-debutant"
-        ]
-    },
-    
-    "english_learning": {
-        "fun_mooc_searches": [
-            "anglais+débutant",
-            "english+course",
-            "langue+anglaise",
-            "business+english"
-        ],
-        "wikiversity_sections": [
-            "/wiki/Catégorie:Anglais",
-            "/wiki/English_language_learning"
-        ]
-    }
-}
-
-# usage_examples.py - Specific usage examples for your topics
-
+import requests
+from bs4 import BeautifulSoup
+from urllib.parse import urljoin
+from ratelimit import limits, sleep_and_retry
+from urllib.robotparser import RobotFileParser
 import json
-from scraper import TopicSpecificScraper
+import os
+import re
+import time
+from datetime import datetime
+import logging
+import sqlite3
+from backoff import on_exception, expo
+from topic_config import TOPIC_CONFIGURATIONS, TOPIC_SPECIFIC_SOURCES
 
-def scrape_computer_basics_only():
-    """Scrape only computer basics courses"""
-    print("=== Scraping Computer Basics Courses ===")
-    
-    scraper = TopicSpecificScraper(output_dir="computer_basics_courses")
-    
-    # Modify the scraper to focus only on computer basics
-    original_topics = scraper.TARGET_TOPICS if hasattr(scraper, 'TARGET_TOPICS') else {}
-    
-    # Override categorization to focus on computer basics
-    def computer_basics_filter(title, description=""):
-        text = f"{title.lower()} {description.lower()}"
-        computer_keywords = TOPIC_CONFIGURATIONS["computer_basics"]["french_keywords"] + \
-                           TOPIC_CONFIGURATIONS["computer_basics"]["english_keywords"]
-        
-        if any(keyword in text for keyword in computer_keywords):
-            return ["computer_basics"]
-        return ["other"]
-    
-    # Temporarily override the categorization method
-    scraper.categorize_course = computer_basics_filter
-    
-    courses = scraper.scrape_all_sources()
-    
-    if courses:
-        filepath = scraper.save_courses_to_json(courses, "computer_basics_only.json")
-        print(f"Found {len(courses)} computer basics courses")
-        
-        # Show sample results
-        for course in courses[:3]:
-            print(f"• {course['title']} ({course['source']})")
-    
-    return courses
+# Set up logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler('scraper.log'),
+        logging.StreamHandler()
+    ]
+)
+logger = logging.getLogger(__name__)
 
-def scrape_programming_only():
-    """Scrape only programming courses"""
-    print("\n=== Scraping Programming Courses ===")
-    
-    scraper = TopicSpecificScraper(output_dir="programming_courses")
-    
-    def programming_filter(title, description=""):
-        text = f"{title.lower()} {description.lower()}"
-        prog_keywords = TOPIC_CONFIGURATIONS["programming"]["french_keywords"] + \
-                       TOPIC_CONFIGURATIONS["programming"]["english_keywords"]
-        
-        if any(keyword in text for keyword in prog_keywords):
-            return ["programming"]
-        return ["other"]
-    
-    scraper.categorize_course = programming_filter
-    
-    courses = scraper.scrape_all_sources()
-    
-    if courses:
-        filepath = scraper.save_courses_to_json(courses, "programming_only.json")
-        print(f"Found {len(courses)} programming courses")
-        
-        # Show sample results
-        for course in courses[:3]:
-            print(f"• {course['title']} ({course['source']})")
-    
-    return courses
-
-def scrape_english_only():
-    """Scrape only English learning courses"""
-    print("\n=== Scraping English Learning Courses ===")
-    
-    scraper = TopicSpecificScraper(output_dir="english_courses")
-    
-    def english_filter(title, description=""):
-        text = f"{title.lower()} {description.lower()}"
-        english_keywords = TOPIC_CONFIGURATIONS["english_learning"]["french_keywords"] + \
-                          TOPIC_CONFIGURATIONS["english_learning"]["english_keywords"]
-        
-        if any(keyword in text for keyword in english_keywords):
-            return ["english_learning"]
-        return ["other"]
-    
-    scraper.categorize_course = english_filter
-    
-    courses = scraper.scrape_all_sources()
-    
-    if courses:
-        filepath = scraper.save_courses_to_json(courses, "english_only.json")
-        print(f"Found {len(courses)} English learning courses")
-        
-        # Show sample results
-        for course in courses[:3]:
-            print(f"• {course['title']} ({course['source']})")
-    
-    return courses
-
-def create_combined_curriculum():
-    """Create a combined curriculum with all three topics"""
-    print("\n=== Creating Combined Curriculum ===")
-    
-    # Scrape all topics
-    computer_courses = scrape_computer_basics_only()
-    programming_courses = scrape_programming_only()
-    english_courses = scrape_english_only()
-    
-    # Create curriculum structure
-    curriculum = {
-        "curriculum_info": {
-            "title": "Complete Digital Skills Curriculum",
-            "description": "Learn computer basics, programming, and English",
-            "total_courses": len(computer_courses) + len(programming_courses) + len(english_courses),
-            "created_at": datetime.now().isoformat()
-        },
-        "modules": {
-            "1_computer_basics": {
-                "title": "💻 Computer Basics & Digital Literacy",
-                "description": "Learn fundamental computer skills and digital tools",
-                "courses": computer_courses,
-                "estimated_duration": "4-6 weeks",
-                "difficulty": "Beginner"
-            },
-            "2_programming": {
-                "title": "🔧 Programming & Development",
-                "description": "Introduction to coding and software development",
-                "courses": programming_courses,
-                "estimated_duration": "8-12 weeks",
-                "difficulty": "Beginner to Intermediate"
-            },
-            "3_english": {
-                "title": "🇬🇧 English Language Skills",
-                "description": "Improve your English for professional and personal use",
-                "courses": english_courses,
-                "estimated_duration": "12-24 weeks",
-                "difficulty": "Beginner to Intermediate"
-            }
-        }
+# Legitimate open educational resources
+LEGITIMATE_SOURCES = {
+    "fun_mooc": {
+        "base_url": "https://www.fun-mooc.fr",
+        "name": "FUN-MOOC (France Université Numérique)",
+        "allowed": True,
+        "license": "Varies, generally open for educational use",
+        "search_endpoints": []
+    },
+    "wikiversity_fr": {
+        "base_url": "https://fr.wikiversity.org",
+        "name": "Wikiversity French",
+        "allowed": True,
+        "license": "CC BY-SA",
+        "categories": []
+    },
+    "wikiversity_en": {
+        "base_url": "https://en.wikiversity.org",
+        "name": "Wikiversity English",
+        "allowed": True,
+        "license": "CC BY-SA",
+        "sections": []
+    },
+    "mit_ocw": {
+        "base_url": "https://ocw.mit.edu",
+        "name": "MIT OpenCourseWare",
+        "allowed": True,
+        "license": "CC BY-NC-SA",
+        "course_searches": []
+    },
+    "openclassrooms": {
+        "base_url": "https://openclassrooms.com",
+        "name": "OpenClassrooms (Free Courses Only)",
+        "allowed": True,
+        "license": "CC BY-SA for open courses",
+        "search_terms": []
+    },
+    "france_ioi": {
+        "base_url": "http://www.france-ioi.org",
+        "name": "France IOI",
+        "allowed": True,
+        "license": "Free educational use",
+        "sections": ["/algo/course.php", "/cours/coursAlgo.php"]
     }
-    
-    # Save combined curriculum
-    os.makedirs("complete_curriculum", exist_ok=True)
-    with open("complete_curriculum/digital_skills_curriculum.json", 'w', encoding='utf-8') as f:
-        json.dump(curriculum, f, ensure_ascii=False, indent=2)
-    
-    print(f"✅ Complete curriculum created with {curriculum['curriculum_info']['total_courses']} courses")
-    return curriculum
+}
 
-def analyze_course_sources():
-    """Analyze which sources provide the best content for each topic"""
-    print("\n=== Source Analysis ===")
-    
-    try:
-        # Load data from previous scraping
-        sources_analysis = {}
-        
-        for topic in ["computer_basics", "programming", "english_learning"]:
+# Update LEGITIMATE_SOURCES with topic-specific configurations
+for topic, config in TOPIC_SPECIFIC_SOURCES.items():
+    for source, source_config in config.items():
+        if source in LEGITIMATE_SOURCES:
+            LEGITIMATE_SOURCES[source].update(source_config)
+
+class TopicSpecificScraper:
+    def __init__(self, output_dir="educational_courses"):
+        self.output_dir = output_dir
+        self.session = requests.Session()
+        self.session.headers.update({
+            'User-Agent': 'Educational Content Aggregator for Open Learning Resources',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            'Accept-Language': 'fr-FR,fr;q=0.9,en;q=0.8',
+            'Accept-Encoding': 'gzip, deflate',
+            'Connection': 'keep-alive',
+        })
+        os.makedirs(self.output_dir, exist_ok=True)
+        self.TARGET_TOPICS = TOPIC_CONFIGURATIONS
+
+    @on_exception(expo, requests.RequestException, max_tries=3)
+    @sleep_and_retry
+    @limits(calls=5, period=60)
+    def fetch_page(self, url, source_name="Unknown"):
+        logger.info(f"Fetching from {source_name}: {url}")
+        try:
+            response = self.session.get(url, timeout=25)
+            response.raise_for_status()
+            response.encoding = response.apparent_encoding
+            return response.text
+        except requests.RequestException as e:
+            logger.error(f"Error fetching {url}: {e}")
+            return None
+
+    def check_robots_txt(self, base_url):
+        try:
+            robots_url = f"{base_url}/robots.txt"
+            rp = RobotFileParser()
+            rp.set_url(robots_url)
+            rp.read()
+            can_fetch = rp.can_fetch('Educational Content Aggregator', base_url)
+            logger.info(f"Robots.txt check for {base_url}: {'Allowed' if can_fetch else 'Blocked'}")
+            return can_fetch
+        except Exception as e:
+            logger.warning(f"Could not check robots.txt for {base_url}: {e}")
+            return True
+
+    def categorize_course(self, title, description=""):
+        title_lower = title.lower()
+        desc_lower = description.lower()
+        text = f"{title_lower} {desc_lower}"
+        categories = []
+        for topic, config in self.TARGET_TOPICS.items():
+            all_keywords = config["french_keywords"] + config["english_keywords"]
+            if any(keyword in text for keyword in all_keywords):
+                categories.append(topic)
+        return categories if categories else ["other"]
+
+    def scrape_fun_mooc(self, config):
+        courses = []
+        base_url = config['base_url']
+        if not self.check_robots_txt(base_url):
+            logger.warning(f"Robots.txt blocks scraping for {base_url}")
+            return courses
+
+        for search_endpoint in config.get('search_endpoints', []):
+            search_url = urljoin(base_url, search_endpoint)
+            html_content = self.fetch_page(search_url, config['name'])
+            if not html_content:
+                continue
+            soup = BeautifulSoup(html_content, 'html.parser')
+            course_cards = soup.select('.course-glimpse, .course-card, .course-item') or []
+            for card in course_cards[:8]:
+                try:
+                    title_elem = card.select_one('h3, .course-title, .course-glimpse-content h3')
+                    link_elem = card.select_one('a')
+                    desc_elem = card.select_one('.course-glimpse-content__description, .description')
+                    if title_elem and link_elem:
+                        title = title_elem.get_text(strip=True)
+                        course_url = urljoin(base_url, link_elem.get('href', ''))
+                        description = desc_elem.get_text(strip=True)[:300] if desc_elem else ""
+                        categories = self.categorize_course(title, description)
+                        if categories != ["other"]:
+                            courses.append({
+                                'source': config['name'],
+                                'title': title,
+                                'url': course_url,
+                                'description': description,
+                                'categories': categories,
+                                'license': config['license'],
+                                'scraped_at': datetime.now().isoformat()
+                            })
+                except Exception as e:
+                    logger.error(f"Error processing FUN-MOOC course card: {e}")
+                time.sleep(4)
+        return courses
+
+    def scrape_wikiversity(self, config):
+        courses = []
+        base_url = config['base_url']
+        if not self.check_robots_txt(base_url):
+            return courses
+        urls_to_check = []
+        if 'categories' in config:
+            urls_to_check.extend([urljoin(base_url, cat) for cat in config['categories']])
+        if 'sections' in config:
+            urls_to_check.extend([urljoin(base_url, section) for section in config['sections']])
+        for url in urls_to_check:
+            html_content = self.fetch_page(url, config['name'])
+            if not html_content:
+                continue
+            soup = BeautifulSoup(html_content, 'html.parser')
+            course_links = soup.select('#mw-pages a, .mw-category-group a, .NavContent a') or []
+            for link in course_links[:12]:
+                try:
+                    href = link.get('href')
+                    title = link.get_text(strip=True)
+                    if href and title and len(title) > 5:
+                        categories = self.categorize_course(title)
+                        if categories != ["other"]:
+                            full_url = urljoin(base_url, href)
+                            courses.append({
+                                'source': config['name'],
+                                'title': title,
+                                'url': full_url,
+                                'description': f"Wikiversity resource: {title}",
+                                'categories': categories,
+                                'license': config['license'],
+                                'scraped_at': datetime.now().isoformat()
+                            })
+                except Exception as e:
+                    logger.error(f"Error processing Wikiversity link: {e}")
+                time.sleep(3)
+        return courses
+
+    def scrape_mit_ocw(self, config):
+        courses = []
+        base_url = config['base_url']
+        if not self.check_robots_txt(base_url):
+            return courses
+        urls_to_check = [urljoin(base_url, search) for search in config.get('course_searches', [])]
+        for url in urls_to_check:
+            html_content = self.fetch_page(url, config['name'])
+            if not html_content:
+                continue
+            soup = BeautifulSoup(html_content, 'html.parser')
             try:
-                with open(f"{topic}_courses/{topic}_only.json", 'r', encoding='utf-8') as f:
-                    data = json.load(f)
-                    courses = data.get("all_courses", [])
-                    
-                    topic_sources = {}
-                    for course in courses:
-                        source = course['source']
-                        topic_sources[source] = topic_sources.get(source, 0) + 1
-                    
-                    sources_analysis[topic] = topic_sources
-            except FileNotFoundError:
-                print(f"No data found for {topic}")
-        
-        # Print analysis
-        print("\nSource effectiveness by topic:")
-        for topic, sources in sources_analysis.items():
-            print(f"\n{topic.replace('_', ' ').title()}:")
-            for source, count in sorted(sources.items(), key=lambda x: x[1], reverse=True):
-                print(f"  {source}: {count} courses")
-    
-    except Exception as e:
-        print(f"Error in analysis: {e}")
+                if '/search/' in url:
+                    search_results = soup.select('.course-title a, .search-result h3 a') or []
+                    for link in search_results[:5]:
+                        title = link.get_text(strip=True)
+                        course_url = urljoin(base_url, link.get('href', ''))
+                        categories = self.categorize_course(title)
+                        if categories != ["other"]:
+                            courses.append({
+                                'source': config['name'],
+                                'title': title,
+                                'url': course_url,
+                                'description': f"MIT OCW Course: {title}",
+                                'categories': categories,
+                                'license': config['license'],
+                                'scraped_at': datetime.now().isoformat()
+                            })
+                else:
+                    title_elem = soup.select_one('h1, .course-title, .course-header--title')
+                    if title_elem:
+                        title = title_elem.get_text(strip=True)
+                        materials = []
+                        for link in soup.select('a[href*=".pdf"], a[href*="download"]'):
+                            href = link.get('href')
+                            link_text = link.get_text(strip=True)
+                            if href and any(keyword in href.lower() for keyword in ['lecture', 'assignment', 'reading']):
+                                materials.append({
+                                    'title': link_text,
+                                    'url': urljoin(url, href),
+                                    'type': 'pdf'
+                                })
+                        desc_elem = soup.select_one('.course-description, .course-info')
+                        description = desc_elem.get_text(strip=True)[:400] if desc_elem else ""
+                        categories = self.categorize_course(title, description)
+                        if categories != ["other"]:
+                            courses.append({
+                                'source': config['name'],
+                                'title': title,
+                                'url': url,
+                                'description': description,
+                                'materials': materials,
+                                'categories': categories,
+                                'license': config['license'],
+                                'scraped_at': datetime.now().isoformat()
+                            })
+                time.sleep(3)
+            except Exception as e:
+                logger.error(f"Error processing MIT OCW content from {url}: {e}")
+        return courses
 
-def export_for_learning_platform():
-    """Export data in a format suitable for a learning platform"""
-    print("\n=== Exporting for Learning Platform ===")
-    
-    try:
-        with open("complete_curriculum/digital_skills_curriculum.json", 'r', encoding='utf-8') as f:
-            curriculum = json.load(f)
-        
-        # Create simplified format for a learning app
-        platform_format = {
-            "app_data": {
-                "version": "1.0",
-                "export_date": datetime.now().isoformat(),
-                "curriculum_name": curriculum["curriculum_info"]["title"]
-            },
-            "learning_paths": []
-        }
-        
-        for module_id, module_data in curriculum["modules"].items():
-            learning_path = {
-                "id": module_id,
-                "title": module_data["title"],
-                "description": module_data["description"],
-                "difficulty": module_data["difficulty"],
-                "estimated_duration": module_data["estimated_duration"],
-                "lessons": []
-            }
-            
-            for i, course in enumerate(module_data["courses"]):
-                lesson = {
-                    "lesson_id": f"{module_id}_lesson_{i+1}",
-                    "title": course["title"],
-                    "description": course["description"][:200] + "..." if len(course["description"]) > 200 else course["description"],
-                    "source_url": course["url"],
-                    "source_name": course["source"],
-                    "license": course["license"],
-                    "categories": course.get("categories", []),
-                    "has_materials": bool(course.get("materials")),
-                    "xp": 10,  # Default XP value
-                    "estimated_time": "30-60 minutes"
-                }
-                learning_path["lessons"].append(lesson)
-            
-            platform_format["learning_paths"].append(learning_path)
-        
-        # Save platform-ready format
-        with open("complete_curriculum/platform_ready_data.json", 'w', encoding='utf-8') as f:
-            json.dump(platform_format, f, ensure_ascii=False, indent=2)
-        
-        print("✅ Platform-ready data exported to complete_curriculum/platform_ready_data.json")
-        
-        # Create a CSV summary for easy viewing
-        import csv
-        with open("complete_curriculum/courses_summary.csv", 'w', newline='', encoding='utf-8') as csvfile:
-            fieldnames = ['Module', 'Title', 'Source', 'URL', 'Categories', 'License']
-            writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
-            writer.writeheader()
-            
-            for path in platform_format["learning_paths"]:
-                for lesson in path["lessons"]:
-                    writer.writerow({
-                        'Module': path["title"],
-                        'Title': lesson["title"],
-                        'Source': lesson["source_name"],
-                        'URL': lesson["source_url"],
-                        'Categories': ', '.join(lesson["categories"]),
-                        'License': lesson["license"]
-                    })
-        
-        print("✅ CSV summary exported to complete_curriculum/courses_summary.csv")
-        
-    except Exception as e:
-        print(f"Error in export: {e}")
+    def scrape_openclassrooms(self, config):
+        courses = []
+        base_url = config['base_url']
+        if not self.check_robots_txt(base_url):
+            return courses
+        for term in config.get('search_terms', []):
+            search_url = f"{base_url}/search/?q={term}"
+            html_content = self.fetch_page(search_url, config['name'])
+            if not html_content:
+                continue
+            soup = BeautifulSoup(html_content, 'html.parser')
+            course_cards = soup.select('.course-card, .courseCard, .search-result') or []
+            for card in course_cards[:6]:
+                try:
+                    title_elem = card.select_one('h3, .title, .course-title')
+                    link_elem = card.select_one('a')
+                    if title_elem and link_elem:
+                        title = title_elem.get_text(strip=True)
+                        course_url = urljoin(base_url, link_elem.get('href', ''))
+                        free_indicators = card.select('.free, .gratuit, .premium-free')
+                        if free_indicators or 'gratuit' in card.get_text().lower():
+                            categories = self.categorize_course(title)
+                            if categories != ["other"]:
+                                courses.append({
+                                    'source': config['name'],
+                                    'title': title,
+                                    'url': course_url,
+                                    'description': f"Free course: {title}",
+                                    'categories': categories,
+                                    'license': config['license'],
+                                    'is_free': True,
+                                    'scraped_at': datetime.now().isoformat()
+                                })
+                except Exception as e:
+                    logger.error(f"Error processing OpenClassrooms course: {e}")
+                time.sleep(4)
+        return courses
 
-# run_complete_scraping.py - Main script to run everything
-def run_complete_workflow():
-    """Run the complete scraping and processing workflow"""
-    import os
-    from datetime import datetime
-    
-    print("🚀 Starting Complete Educational Content Scraping Workflow")
-    print("="*60)
-    print(f"Started at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-    print()
-    
-    # Step 1: Scrape individual topics
-    print("📝 Step 1: Scraping individual topics...")
-    computer_courses = scrape_computer_basics_only()
-    programming_courses = scrape_programming_only() 
-    english_courses = scrape_english_only()
-    
-    total_found = len(computer_courses) + len(programming_courses) + len(english_courses)
-    print(f"\n✅ Individual scraping completed: {total_found} total courses found")
-    
-    # Step 2: Create combined curriculum
-    print("\n📚 Step 2: Creating combined curriculum...")
-    curriculum = create_combined_curriculum()
-    
-    # Step 3: Analyze sources
-    print("\n📊 Step 3: Analyzing sources...")
-    analyze_course_sources()
-    
-    # Step 4: Export for platform
-    print("\n🔄 Step 4: Exporting for learning platform...")
-    export_for_learning_platform()
-    
-    # Step 5: Generate final report
-    print("\n📋 Step 5: Generating final report...")
-    generate_final_report(curriculum)
-    
-    print(f"\n🎉 Workflow completed at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-    print("Check the 'complete_curriculum' folder for all outputs!")
+    def scrape_france_ioi(self, config):
+        courses = []
+        base_url = config['base_url']
+        if not self.check_robots_txt(base_url):
+            return courses
+        for section in config.get('sections', []):
+            url = urljoin(base_url, section)
+            html_content = self.fetch_page(url, config['name'])
+            if not html_content:
+                continue
+            soup = BeautifulSoup(html_content, 'html.parser')
+            course_links = soup.select('a[href*="/algo/"], a[href*="/cours/"]') or []
+            for link in course_links[:10]:
+                try:
+                    href = link.get('href')
+                    title = link.get_text(strip=True)
+                    if href and title and len(title) > 5:
+                        categories = self.categorize_course(title)
+                        if categories != ["other"]:
+                            full_url = urljoin(base_url, href)
+                            courses.append({
+                                'source': config['name'],
+                                'title': title,
+                                'url': full_url,
+                                'description': f"France IOI resource: {title}",
+                                'categories': categories,
+                                'license': config['license'],
+                                'scraped_at': datetime.now().isoformat()
+                            })
+                except Exception as e:
+                    logger.error(f"Error processing France IOI link: {e}")
+                time.sleep(3)
+        return courses
 
-def generate_final_report(curriculum):
-    """Generate a comprehensive final report"""
-    report = []
-    report.append("EDUCATIONAL CONTENT SCRAPING REPORT")
-    report.append("="*50)
-    report.append(f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-    report.append(f"Total Courses: {curriculum['curriculum_info']['total_courses']}")
-    report.append("")
-    
-    report.append("MODULES BREAKDOWN:")
-    report.append("-" * 20)
-    
-    for module_id, module_data in curriculum["modules"].items():
-        report.append(f"{module_data['title']}")
-        report.append(f"  Courses: {len(module_data['courses'])}")
-        report.append(f"  Duration: {module_data['estimated_duration']}")
-        report.append(f"  Difficulty: {module_data['difficulty']}")
-        
-        # Source breakdown for this module
+    def scrape_all_sources(self):
+        courses = []
+        for source_name, config in LEGITIMATE_SOURCES.items():
+            if not config.get('allowed', False):
+                logger.warning(f"Skipping {source_name} as it is not allowed")
+                continue
+            try:
+                if source_name == "fun_mooc":
+                    courses.extend(self.scrape_fun_mooc(config))
+                elif source_name.startswith("wikiversity"):
+                    courses.extend(self.scrape_wikiversity(config))
+                elif source_name == "mit_ocw":
+                    courses.extend(self.scrape_mit_ocw(config))
+                elif source_name == "openclassrooms":
+                    courses.extend(self.scrape_openclassrooms(config))
+                elif source_name == "france_ioi":
+                    courses.extend(self.scrape_france_ioi(config))
+            except Exception as e:
+                logger.error(f"Error scraping {source_name}: {e}")
+        return courses
+
+    def save_courses_to_json(self, all_courses, filename="topic_courses.json"):
+        filepath = os.path.join(self.output_dir, filename)
+        by_topic = {}
         sources = {}
-        for course in module_data['courses']:
+        for course in all_courses:
             source = course['source']
             sources[source] = sources.get(source, 0) + 1
-        
-        report.append("  Sources:")
-        for source, count in sources.items():
-            report.append(f"    • {source}: {count} courses")
-        report.append("")
-    
-    report.append("FILES CREATED:")
-    report.append("-" * 15)
-    report.append("• computer_basics_courses/computer_basics_only.json")
-    report.append("• programming_courses/programming_only.json") 
-    report.append("• english_courses/english_only.json")
-    report.append("• complete_curriculum/digital_skills_curriculum.json")
-    report.append("• complete_curriculum/platform_ready_data.json")
-    report.append("• complete_curriculum/courses_summary.csv")
-    report.append("")
-    
-    report.append("NEXT STEPS:")
-    report.append("-" * 12)
-    report.append("1. Review the courses in each category")
-    report.append("2. Import platform_ready_data.json into your learning app")
-    report.append("3. Download materials from courses with available resources")
-    report.append("4. Create quizzes and assessments for each module")
-    
-    # Save report
-    os.makedirs("complete_curriculum", exist_ok=True)
-    with open("complete_curriculum/FINAL_REPORT.txt", 'w', encoding='utf-8') as f:
-        f.write('\n'.join(report))
-    
-    # Print report
-    print('\n'.join(report))
+            for category in course.get('categories', ['other']):
+                if category not in by_topic:
+                    by_topic[category] = []
+                by_topic[category].append(course)
+        output_data = {
+            'scraping_metadata': {
+                'scraped_at': datetime.now().isoformat(),
+                'total_courses': len(all_courses),
+                'sources': sources,
+                'topics': {topic: len(courses) for topic, courses in by_topic.items()},
+                'target_topics': list(self.TARGET_TOPICS.keys()),
+                'scraper_version': '2.2'
+            },
+            'courses_by_topic': by_topic,
+            'all_courses': all_courses
+        }
+        with open(filepath, 'w', encoding='utf-8') as f:
+            json.dump(output_data, f, ensure_ascii=False, indent=2)
+        logger.info(f"Results saved to {filepath}")
+        return filepath
+
+    def generate_topic_report(self, courses):
+        if not courses:
+            print("No courses found.")
+            return
+        print(f"\n💻 EDUCATIONAL COURSES REPORT")
+        print(f"Topics: PC Basics, Programming, English Learning")
+        print(f"{'='*60}")
+        print(f"Total courses found: {len(courses)}")
+        by_topic = {}
+        by_source = {}
+        for course in courses:
+            for category in course.get('categories', ['other']):
+                if category not in by_topic:
+                    by_topic[category] = []
+                by_topic[category].append(course)
+            source = course['source']
+            by_source[source] = by_source.get(source, 0) + 1
+        topic_names = {
+            'computer_basics': '🖥️  PC Basics & Computer Skills',
+            'programming': '💻 Programming & Development',
+            'english_learning': '🇬🇧 English Learning',
+            'other': '📚 Other Relevant Courses'
+        }
+        print(f"\nCourses by Topic:")
+        for topic, topic_courses in by_topic.items():
+            display_name = topic_names.get(topic, topic.title())
+            print(f"  {display_name}: {len(topic_courses)} courses")
+        print(f"\nCourses by Source:")
+        for source, count in sorted(by_source.items(), key=lambda x: x[1], reverse=True):
+            print(f"  • {source}: {count} courses")
+        print(f"\nSample Courses by Topic:")
+        for topic, topic_courses in by_topic.items():
+            if topic_courses:
+                display_name = topic_names.get(topic, topic.title())
+                print(f"\n{display_name}:")
+                for i, course in enumerate(topic_courses[:3]):
+                    print(f"  {i+1}. {course['title']}")
+                    print(f"     Source: {course['source']}")
+                    print(f"     URL: {course['url']}")
+                    if len(topic_courses) > 3:
+                        print(f"     ... and {len(topic_courses) - 3} more")
+                        break
+
+class DjangAppIntegrator:
+    def __init__(self, db_path="database/app.db"):
+        self.db_path = db_path
+        self.init_database()
+
+    def init_database(self):
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS content (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    module_id TEXT NOT NULL,
+                    lesson_id TEXT UNIQUE NOT NULL,
+                    title TEXT NOT NULL,
+                    description TEXT,
+                    video_path TEXT,
+                    pdf_path TEXT,
+                    has_quiz BOOLEAN DEFAULT 0,
+                    xp INTEGER DEFAULT 0,
+                    quiz_data TEXT,
+                    source_name TEXT,
+                    license_info TEXT,
+                    scraped_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
+            conn.commit()
+            conn.close()
+            logger.info("Database initialized for DjangApp")
+        except Exception as e:
+            logger.error(f"Error initializing database: {e}")
+
+    def categorize_for_djangapp(self, course):
+        category_to_module = {
+            "computer_basics": "informatique",
+            "programming": "programmation",
+            "english_learning": None
+        }
+        for category in course.get('categories', []):
+            module_id = category_to_module.get(category)
+            if module_id:
+                return module_id
+        return self.categorize_for_djangapp_fallback(course.get('title', ''), course.get('description', ''))
+
+    def categorize_for_djangapp_fallback(self, title, description=""):
+        text = f"{title} {description}".lower()
+        bureautique_keywords = ["word", "excel", "powerpoint", "office", "bureautique", "traitement texte", "tableur"]
+        informatique_keywords = ["ordinateur", "windows", "système", "fichiers", "internet", "email", "sécurité"]
+        programmation_keywords = ["programmation", "scratch", "python", "html", "css", "code", "algorithme"]
+        if any(keyword in text for keyword in bureautique_keywords):
+            return "bureautique"
+        elif any(keyword in text for keyword in informatique_keywords):
+            return "informatique"
+        elif any(keyword in text for keyword in programmation_keywords):
+            return "programmation"
+        return None
+
+    def integrate_scraped_courses(self, courses_data):
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            integrated_count = 0
+            errors = []
+            for course in courses_data:
+                module_id = self.categorize_for_djangapp(course)
+                if not module_id:
+                    errors.append(f"Skipped {course.get('title', '')}: No matching module")
+                    continue
+                lesson_id = f"{module_id}-{course.get('title', '').lower().replace(' ', '-')[:20]}-{int(time.time())}"
+                quiz_data = self.generate_basic_quiz(course.get('title', ''), course.get('description', ''), module_id)
+                pdf_url = next((m['url'] for m in course.get('materials', []) if m['type'] == 'pdf'), None)
+                try:
+                    cursor.execute('''
+                        INSERT OR IGNORE INTO content 
+                        (module_id, lesson_id, title, description, video_path, pdf_path, 
+                         has_quiz, xp, quiz_data, source_name, license_info)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ''', (
+                        module_id,
+                        lesson_id,
+                        course.get('title', ''),
+                        course.get('description', '')[:500],
+                        None,
+                        pdf_url,
+                        1 if quiz_data else 0,
+                        15,
+                        quiz_data,
+                        course.get('source', ''),
+                        course.get('license', '')
+                    ))
+                    integrated_count += 1
+                except Exception as e:
+                    errors.append(f"Error inserting course {course.get('title', '')}: {e}")
+                    logger.error(f"Error inserting course {course.get('title', '')}: {e}")
+            conn.commit()
+            conn.close()
+            logger.info(f"Integrated {integrated_count} courses into DjangApp")
+            return integrated_count, errors
+        except Exception as e:
+            logger.error(f"Integration error: {e}")
+            return 0, [f"Integration failed: {e}"]
+
+    def generate_basic_quiz(self, title, description, module_id):
+        quiz_templates = {
+            "bureautique": {
+                "title": f"Quiz - {title}",
+                "questions": [
+                    {
+                        "question": f"Quel est l'usage principal de {title.lower()} ?",
+                        "options": ["Bureautique", "Jeux", "Internet", "Musique"],
+                        "correct": 0
+                    },
+                    {
+                        "question": "Quelle extension est commune aux fichiers Office ?",
+                        "options": [".txt", ".docx", ".jpg", ".mp3"],
+                        "correct": 1
+                    }
+                ]
+            },
+            "informatique": {
+                "title": f"Quiz - {title}",
+                "questions": [
+                    {
+                        "question": f"Dans le contexte de {title.lower()}, quel aspect est prioritaire ?",
+                        "options": ["Sécurité", "Rapidité", "Couleur", "Prix"],
+                        "correct": 0
+                    }
+                ]
+            },
+            "programmation": {
+                "title": f"Quiz - {title}",
+                "questions": [
+                    {
+                        "question": "Qu'est-ce que la programmation ?",
+                        "options": ["Écrire du code", "Jouer", "Lire", "Dormir"],
+                        "correct": 0
+                    }
+                ]
+            }
+        }
+        template = quiz_templates.get(module_id, quiz_templates["informatique"])
+        if description:
+            keywords = [word for word in description.lower().split() if len(word) > 4][:2]
+            if keywords:
+                template["questions"].append({
+                    "question": f"Quel concept est lié à {title} ?",
+                    "options": [keywords[0].capitalize(), "Autre", "Incorrect", "Faux"],
+                    "correct": 0
+                })
+        return json.dumps(template, ensure_ascii=False)
+
+def main_with_djangapp_integration():
+    scraper = TopicSpecificScraper(output_dir="educational_courses")
+    print("🎯 Scraping for DjangApp...")
+    print("Modules: Bureautique, Informatique, Programmation\n")
+    courses = scraper.scrape_all_sources()
+    if courses:
+        filepath = scraper.save_courses_to_json(courses)
+        integrator = DjangAppIntegrator()
+        integrated_count, errors = integrator.integrate_scraped_courses(courses)
+        modules_breakdown = {}
+        for course in courses:
+            module_id = integrator.categorize_for_djangapp(course)
+            if module_id:
+                modules_breakdown[module_id] = modules_breakdown.get(module_id, 0) + 1
+        scraper.generate_topic_report(courses)
+        print(f"\n✅ Results for DjangApp:")
+        print(f"📚 {len(courses)} courses scraped")
+        print(f"🎯 {integrated_count} courses integrated into app")
+        print(f"💾 Data saved: {filepath}")
+        return {
+            "success": len(errors) == 0,
+            "total_scraped": len(courses),
+            "integrated": integrated_count,
+            "modules_breakdown": modules_breakdown,
+            "output_file": filepath,
+            "errors": errors
+        }
+    else:
+        print("❌ No courses found")
+        return {
+            "success": False,
+            "total_scraped": 0,
+            "integrated": 0,
+            "modules_breakdown": {},
+            "output_file": None,
+            "errors": ["No courses found"]
+        }
 
 if __name__ == "__main__":
-    # Import required modules
-    import os
-    from datetime import datetime
-    
-    # Run the complete workflow
-    run_complete_workflow()
+    result = main_with_djangapp_integration()
+    print(json.dumps(result, ensure_ascii=False, indent=2))

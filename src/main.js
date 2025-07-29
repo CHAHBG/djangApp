@@ -20,13 +20,11 @@ function createWindow() {
     },
   });
 
-  // Load React frontend by default
-  mainWindow.loadFile(path.join(__dirname, '../public/index.html'));
-  // Uncomment to load vanilla JS frontend for testing
-  // mainWindow.loadFile(path.join(__dirname, 'vanilla/index-vanilla.html'));
-
   if (process.env.NODE_ENV === 'development') {
+    mainWindow.loadURL('http://localhost:3000');
     mainWindow.webContents.openDevTools();
+  } else {
+    mainWindow.loadFile(path.join(__dirname, '../build/index.html'));
   }
 
   mainWindow.on('closed', () => {
@@ -36,18 +34,105 @@ function createWindow() {
 
 function initializeDatabase() {
   try {
-    db = new Database(path.join(__dirname, '../database/app.db'), { verbose: console.log });
+    db = new Database(path.join(__dirname, '../database/app.db'), {
+      verbose: console.log,
+      timeout: 10000,
+    });
     const setupSql = require('fs').readFileSync(path.join(__dirname, '../database/setup.sql'), 'utf8');
     db.exec(setupSql);
+    console.log('Database initialized');
   } catch (error) {
     console.error('Database initialization error:', error);
     throw error;
   }
 }
 
+async function runContentScraper() {
+  try {
+    console.log('Launching content scraper...');
+    const scraperPath = path.join(__dirname, 'enhanced_scraper.py');
+    const { stdout, stderr } = await execPromise(`python3 "${scraperPath}"`, {
+      cwd: __dirname,
+      timeout: 300000,
+    });
+
+    console.log('Scraper output:', stdout);
+    if (stderr) console.error('Scraper errors:', stderr);
+
+    let results;
+    try {
+      results = JSON.parse(stdout);
+    } catch (parseError) {
+      console.error('Invalid JSON output:', parseError);
+      results = { success: false, error: 'Invalid scraper output' };
+    }
+
+    if (results.success && mainWindow) {
+      const content = await refreshContentFromDatabase();
+      mainWindow.webContents.send('content-updated', content);
+      mainWindow.webContents.send('scraping-completed', results);
+    }
+
+    return { ...results, timestamp: new Date().toISOString() };
+  } catch (error) {
+    console.error('Scraper error:', error);
+    if (mainWindow) {
+      mainWindow.webContents.send('scraping-completed', {
+        success: false,
+        error: error.message,
+        timestamp: new Date().toISOString(),
+      });
+    }
+    return { success: false, error: error.message, timestamp: new Date().toISOString() };
+  }
+}
+
+async function refreshContentFromDatabase() {
+  try {
+    const content = db.prepare('SELECT * FROM content ORDER BY module_id, lesson_id').all();
+    console.log(`Content refreshed: ${content.length} lessons available`);
+    return content;
+  } catch (error) {
+    console.error('Error refreshing content:', error);
+    return [];
+  }
+}
+
+async function startQuiz(quizData) {
+  try {
+    // Placeholder: In a full implementation, this could open a quiz window or store quiz state
+    console.log('Starting quiz for lesson:', quizData.lessonId, quizData.quizData);
+    if (mainWindow) {
+      mainWindow.webContents.send('quiz-started', quizData);
+    }
+    return { success: true, lessonId: quizData.lessonId };
+  } catch (error) {
+    console.error('Error starting quiz:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+function scheduleAutoScraping() {
+  setInterval(async () => {
+    console.log('Scheduled auto-scraping...');
+    await runContentScraper();
+  }, 24 * 60 * 60 * 1000);
+}
+
 app.whenReady().then(() => {
   initializeDatabase();
   createWindow();
+
+  setTimeout(async () => {
+    const contentCount = db.prepare('SELECT COUNT(*) as count FROM content').get();
+    if (contentCount.count === 0) {
+      console.log('No content detected, running initial scrape...');
+      mainWindow.webContents.send('scraping-started', { timestamp: new Date().toISOString() });
+      await runContentScraper();
+    }
+  }, 5000);
+
+  scheduleAutoScraping();
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
@@ -58,14 +143,12 @@ app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
 });
 
-// IPC Handlers for both React and Vanilla JS
+// IPC Handlers
 ipcMain.handle('getUser', async () => {
-  const row = db.prepare('SELECT * FROM users LIMIT 1').get();
-  return row || null;
+  return db.prepare('SELECT * FROM users LIMIT 1').get() || null;
 });
 
 ipcMain.handle('getUserData', async () => {
-  // Alias for React frontend
   return await ipcMain.handle('getUser');
 });
 
@@ -91,7 +174,6 @@ ipcMain.handle('updateUserProgress', async (event, progressData) => {
 });
 
 ipcMain.handle('getProgress', async (event, userId) => {
-  // Alias for React frontend
   return await ipcMain.handle('getUserProgress', null, userId);
 });
 
@@ -118,7 +200,6 @@ ipcMain.handle('getUserBadges', async (event, userId) => {
 });
 
 ipcMain.handle('getBadges', async (event, userId) => {
-  // Alias for React frontend
   return await ipcMain.handle('getUserBadges', null, userId);
 });
 
@@ -148,35 +229,47 @@ ipcMain.handle('getResources', async (event, lessonId) => {
   return db.prepare('SELECT * FROM resources WHERE lesson_id = ?').all(lessonId);
 });
 
-ipcMain.handle('getAssetPath', async (event, path) => {
-  // Convert local paths to CDN for consistency
-  return path.replace(/^assets\//, 'https://CHAHBG.github.io/infoapp-assets/');
+ipcMain.handle('getAssetPath', async (event, assetPath) => {
+  return path.join(__dirname, '../assets', assetPath);
 });
 
-ipcMain.handle('runScraper', async () => {
+ipcMain.handle('runContentScraper', runContentScraper);
+
+ipcMain.handle('startQuiz', async (event, quizData) => {
+  return await startQuiz(quizData);
+});
+
+ipcMain.handle('getScrapingStats', async () => {
   try {
-    const { stdout } = await execPromise('python3 scraper.py', { cwd: __dirname });
-    const scrapedAssets = JSON.parse(stdout);
-    const stmt = db.prepare(
-      'INSERT OR REPLACE INTO content (lesson_id, module_id, title, video_path, pdf_path, has_quiz, xp, quiz_data) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
-    );
-    let count = 0;
-    for (const asset of scrapedAssets) {
-      stmt.run(
-        asset.lesson_id,
-        asset.module_id,
-        asset.title,
-        `https://CHAHBG.github.io/infoapp-assets/videos/${asset.lesson_id}.mp4`,
-        asset.pdf_path ? `https://CHAHBG.github.io/infoapp-assets/pdf/${asset.lesson_id}.pdf` : null,
-        asset.has_quiz ? 1 : 0,
-        asset.xp || 10,
-        asset.quiz_data || null
-      );
-      count++;
-    }
-    return count;
+    const stats = db.prepare(`
+      SELECT 
+        module_id,
+        COUNT(*) as total_lessons,
+        SUM(CASE WHEN has_quiz = 1 THEN 1 ELSE 0 END) as lessons_with_quiz,
+        AVG(xp) as avg_xp
+      FROM content 
+      GROUP BY module_id
+    `).all();
+
+    const totalContent = db.prepare('SELECT COUNT(*) as total FROM content').get();
+    const recentContent = db.prepare(`
+      SELECT COUNT(*) as recent 
+      FROM content 
+      WHERE scraped_at > datetime('now', '-7 days')
+    `).get();
+
+    return {
+      modules: stats,
+      totalLessons: totalContent.total,
+      recentlyAdded: recentContent.recent,
+      lastUpdate: new Date().toISOString(),
+    };
   } catch (error) {
-    console.error('Scraper error:', error);
-    throw error;
+    console.error('Error fetching stats:', error);
+    return { modules: [], totalLessons: 0, recentlyAdded: 0, lastUpdate: new Date().toISOString() };
   }
+});
+
+ipcMain.handle('manualContentRefresh', async () => {
+  return await refreshContentFromDatabase();
 });
